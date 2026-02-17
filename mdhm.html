@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pixel Marketplace — Demo</title>
+    <style>
+        :root{
+            --bg:#0f1724; --panel:#0b1220; --accent:#ffcc00; --muted:#9aa7b2;
+            --tile-size:10; /* px per pixel */
+        }
+        html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#071021 0%, #071827 60%);color:#e6eef6}
+        .app{display:flex;flex-direction:column;height:100%}
+        header{display:flex;align-items:center;gap:16px;padding:18px 22px;background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent);box-shadow:0 1px 0 rgba(255,255,255,0.02)}
+        .brand{display:flex;align-items:center;gap:12px}
+        .logo{width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#ff8a00);display:flex;align-items:center;justify-content:center;font-weight:700;color:#071021}
+        h1{font-size:16px;margin:0}
+        .controls{margin-left:auto;display:flex;gap:10px;align-items:center}
+        .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);padding:8px 12px;border-radius:8px;cursor:pointer}
+        .btn.primary{background:var(--accent);color:#071021;border:none}
+        .main{display:flex;flex:1;gap:18px;padding:18px}
+        .canvas-wrap{flex:1;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px;padding:12px;display:flex;flex-direction:column;min-width:320px}
+        .viewport{flex:1;border-radius:8px;overflow:hidden;position:relative;background:#071021;border:1px solid rgba(255,255,255,0.02)}
+        canvas{display:block;background:#071021}
+        .sidebar{width:360px;min-width:260px;max-width:420px;background:linear-gradient(180deg,#071827, #06121a);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,0.03)}
+        .panel{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);padding:12px;border-radius:10px;margin-bottom:12px}
+        label{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+        input[type="number"],input[type="text"],select{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#e6eef6}
+        .meta{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px}
+        .legend{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        .chip{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);font-size:13px;color:var(--muted)}
+        footer{padding:12px 18px;color:var(--muted);font-size:13px;text-align:center}
+        /* modal */
+        .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:none;align-items:center;justify-content:center;z-index:40}
+        .modal{width:720px;max-width:95%;background:linear-gradient(180deg,#071827,#06121a);border-radius:12px;padding:18px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 10px 40px rgba(2,6,23,0.7)}
+        .modal-grid{display:flex;gap:12px}
+        .preview{width:360px;height:200px;border-radius:8px;background:#0b1220;border:1px solid rgba(255,255,255,0.02);display:flex;align-items:center;justify-content:center;overflow:hidden}
+        .modal form{flex:1;display:flex;flex-direction:column;gap:8px}
+        .small{font-size:12px;color:var(--muted)}
+        .sold-badge{display:inline-block;padding:6px 8px;border-radius:8px;background:rgba(255,0,0,0.12);color:#ffb3b3;font-weight:600}
+        .available-badge{display:inline-block;padding:6px 8px;border-radius:8px;background:rgba(0,200,120,0.08);color:#9ff3c6;font-weight:600}
+        .coords{font-family:monospace;color:var(--muted)}
+        /* tooltip */
+        .tooltip{position:absolute;pointer-events:none;background:#071827;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);color:var(--muted);font-size:13px;transform:translate(-50%,-120%);white-space:nowrap;display:none;z-index:30}
+        @media (max-width:900px){.main{flex-direction:column}.sidebar{width:100%}}
+    </style>
+</head>
+<body>
+<div class="app">
+    <header>
+        <div class="brand">
+            <div class="logo">PX</div>
+            <div>
+                <h1>Pixel Marketplace — Demo</h1>
+                <div style="font-size:12px;color:var(--muted)">Buy pixel blocks, preview, and manage (local demo)</div>
+            </div>
+        </div>
+        <div class="controls">
+            <div class="chip">Grid: <strong id="gridSizeLabel">1000×1000</strong></div>
+            <button class="btn" id="zoomOut">−</button>
+            <button class="btn" id="zoomIn">+</button>
+            <button class="btn primary" id="buyBtn">Buy</button>
+        </div>
+    </header>
+
+    <div class="main">
+        <div class="canvas-wrap">
+            <div class="panel" style="display:flex;gap:12px;align-items:center">
+                <div class="chip">Price: <strong>$1 / pixel</strong></div>
+                <div class="chip">Min: <strong id="minPixelsLabel">100</strong> px</div>
+                <div class="chip">Owned: <strong id="ownedCount">0</strong></div>
+                <div style="margin-left:auto" class="small">Tip: drag to pan, scroll to zoom, click to select</div>
+            </div>
+
+            <div class="viewport" id="viewport">
+                <canvas id="canvas"></canvas>
+                <div class="tooltip" id="tooltip"></div>
+            </div>
+        </div>
+
+        <aside class="sidebar">
+            <div class="panel">
+                <label>Selection</label>
+                <div style="display:flex;gap:8px">
+                    <input type="number" id="selW" min="1" value="10" style="width:80px" />
+                    <input type="number" id="selH" min="1" value="10" style="width:80px" />
+                    <div style="align-self:center;color:var(--muted)">pixels</div>
+                </div>
+                <div class="meta">
+                    <div class="small">Cost</div>
+                    <div class="chip" id="cost">$100</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <label>Quick actions</label>
+                <div style="display:flex;gap:8px">
+                    <button class="btn" id="centerBtn">Center</button>
+                    <button class="btn" id="clearBtn">Clear Demo</button>
+                    <button class="btn" id="exportBtn">Export Map</button>
+                </div>
+                <div style="margin-top:10px">
+                    <label>Search owner</label>
+                    <input type="text" id="searchOwner" placeholder="owner name" />
+                </div>
+            </div>
+
+            <div class="panel">
+                <label>Legend</label>
+                <div class="legend">
+                    <div class="chip"><span style="display:inline-block;width:12px;height:12px;background:#2b6cff;border-radius:2px;margin-right:8px;vertical-align:middle"></span> Sold</div>
+                    <div class="chip"><span style="display:inline-block;width:12px;height:12px;background:transparent;border:1px dashed rgba(255,255,255,0.06);margin-right:8px;vertical-align:middle"></span> Available</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <label>Demo data</label>
+                <div class="small">This demo stores purchases in your browser (localStorage). No payments are processed.</div>
+            </div>
+        </aside>
+    </div>
+
+    <footer>Demo implementation • Local-only pixel marketplace • Built for prototyping</footer>
+</div>
+
+<!-- Purchase Modal -->
+<div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <h3 id="modalTitle" style="margin:0">Purchase Pixels</h3>
+            <div class="coords" id="modalCoords">x:0 y:0</div>
+        </div>
+        <div class="modal-grid">
+            <div class="preview" id="previewBox">Preview</div>
+            <form id="purchaseForm">
+                <label>Owner name</label>
+                <input type="text" id="ownerName" required placeholder="Your name or brand" />
+                <label>Hover text (optional)</label>
+                <input type="text" id="hoverText" placeholder="Short slogan (max 40 chars)" maxlength="40" />
+                <label>Destination URL</label>
+                <input type="text" id="destUrl" placeholder="https://example.com" />
+                <label>Upload image (will be scaled to block)</label>
+                <input type="file" id="imageFile" accept="image/*" />
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="btn primary" id="confirmBuy" type="submit">Confirm Purchase</button>
+                    <button class="btn" id="cancelBuy" type="button">Cancel</button>
+                </div>
+                <div style="margin-top:8px" class="small">This demo simulates a purchase and marks pixels as sold locally.</div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    /*
+      Pixel Marketplace Demo
+      - Canvas-based 1000x1000 pixel grid (1,000,000 pixels)
+      - Tile size is controlled by zoom; selection is in pixels
+      - Purchases are simulated and stored in localStorage
+      - No backend, no payments — this is a front-end implementation to prototype UX & interactions
+    */
+
+    const GRID_W = 1000, GRID_H = 1000;
+    const TILE = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tile-size')) || 10;
+    const canvas = document.getElementById('canvas');
+    const viewport = document.getElementById('viewport');
+    const tooltip = document.getElementById('tooltip');
+    const selWInput = document.getElementById('selW'), selHInput = document.getElementById('selH');
+    const costLabel = document.getElementById('cost'), ownedCountLabel = document.getElementById('ownedCount');
+    const modalBackdrop = document.getElementById('modalBackdrop'), previewBox = document.getElementById('previewBox');
+    const ownerNameInput = document.getElementById('ownerName'), hoverTextInput = document.getElementById('hoverText'), destUrlInput = document.getElementById('destUrl');
+    const imageFileInput = document.getElementById('imageFile');
+    const buyBtn = document.getElementById('buyBtn');
+    const zoomIn = document.getElementById('zoomIn'), zoomOut = document.getElementById('zoomOut');
+    const centerBtn = document.getElementById('centerBtn'), clearBtn = document.getElementById('clearBtn'), exportBtn = document.getElementById('exportBtn');
+    const gridSizeLabel = document.getElementById('gridSizeLabel'), minPixelsLabel = document.getElementById('minPixelsLabel');
+
+    let scale = 0.6; // initial zoom (canvas pixels per grid pixel)
+    let offsetX = 0, offsetY = 0; // pan offset in canvas pixels
+    let isPanning = false, panStart = null;
+    let selection = null; // {x,y,w,h}
+    const PRICE_PER_PIXEL = 1; // $1 per pixel
+    const MIN_PIXELS = 100;
+    minPixelsLabel.textContent = MIN_PIXELS;
+    gridSizeLabel.textContent = `${GRID_W}×${GRID_H}`;
+
+    // Data store (localStorage)
+    const STORAGE_KEY = 'pixel_market_demo_v1';
+    let store = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    // store.blocks: map "x:y:w:h" => {owner,hover,url,imgData,ts}
+
+    function saveStore(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); updateOwnedCount(); }
+
+    function updateOwnedCount(){
+        const count = Object.values(store).length ? Object.values(store).reduce((s,b)=>s + (b.pixels||0),0) : 0;
+        ownedCountLabel.textContent = count;
+    }
+
+    // Canvas sizing
+    function resizeCanvas(){
+        const rect = viewport.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        draw();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // Convert grid coords to canvas pixels
+    function gridToCanvas(x,y){ return {cx: (x * scale) + offsetX, cy: (y * scale) + offsetY}; }
+    function canvasToGrid(cx,cy){ return {x: Math.floor((cx - offsetX)/scale), y: Math.floor((cy - offsetY)/scale)}; }
+
+    // Draw grid and sold blocks
+    function draw(){
+        const ctx = canvas.getContext('2d', {alpha:false});
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        // background
+        ctx.fillStyle = '#071021';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+
+        // draw sold blocks
+        for(const key in store){
+            const b = store[key];
+            // skip if out of viewport
+            const gx = b.x, gy = b.y, gw = b.w, gh = b.h;
+            const {cx,cy} = gridToCanvas(gx,gy);
+            const w = gw * scale, h = gh * scale;
+            if(cx + w < 0 || cy + h < 0 || cx > canvas.width || cy > canvas.height) continue;
+            // fill
+            ctx.fillStyle = '#2b6cff';
+            ctx.fillRect(cx, cy, w, h);
+            // draw image if present
+            if(b.imgData){
+                try{
+                    const img = new Image();
+                    img.src = b.imgData;
+                    ctx.save();
+                    ctx.globalAlpha = 0.95;
+                    ctx.drawImage(img, cx, cy, w, h);
+                    ctx.restore();
+                }catch(e){}
+            }
+            // border
+            ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+            ctx.strokeRect(cx+0.5, cy+0.5, w-1, h-1);
+        }
+
+        // draw selection
+        if(selection){
+            const {cx,cy} = gridToCanvas(selection.x, selection.y);
+            const w = selection.w * scale, h = selection.h * scale;
+            const ctx2 = ctx;
+            ctx2.save();
+            ctx2.strokeStyle = 'rgba(255,204,0,0.95)';
+            ctx2.lineWidth = 2;
+            ctx2.setLineDash([6,4]);
+            ctx2.strokeRect(cx+1, cy+1, w-2, h-2);
+            ctx2.restore();
+        }
+
+        // subtle grid lines at zoomed-in levels
+        if(scale > 0.6){
+            const step = scale;
+            ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+            ctx.beginPath();
+            for(let gx = Math.floor(-offsetX/scale); gx < Math.ceil((canvas.width - offsetX)/scale); gx++){
+                const x = Math.round(offsetX + gx*scale) + 0.5;
+                ctx.moveTo(x,0); ctx.lineTo(x,canvas.height);
+            }
+            for(let gy = Math.floor(-offsetY/scale); gy < Math.ceil((canvas.height - offsetY)/scale); gy++){
+                const y = Math.round(offsetY + gy*scale) + 0.5;
+                ctx.moveTo(0,y); ctx.lineTo(canvas.width,y);
+            }
+            ctx.stroke();
+        }
+    }
+
+    // Interaction handlers
+    canvas.addEventListener('mousedown', (e)=>{
+        if(e.button === 1) return;
+        isPanning = true;
+        panStart = {x:e.clientX, y:e.clientY, ox:offsetX, oy:offsetY};
+        canvas.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mouseup', (e)=>{
+        isPanning = false;
+        panStart = null;
+        canvas.style.cursor = 'default';
+    });
+    window.addEventListener('mousemove', (e)=>{
+        if(isPanning && panStart){
+            offsetX = panStart.ox + (e.clientX - panStart.x);
+            offsetY = panStart.oy + (e.clientY - panStart.y);
+            draw();
+        } else {
+            // tooltip & hover
+            const rect = canvas.getBoundingClientRect();
+            const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+            const g = canvasToGrid(cx, cy);
+            if(g.x >=0 && g.x < GRID_W && g.y >=0 && g.y < GRID_H){
+                tooltip.style.display = 'block';
+                tooltip.style.left = (e.clientX - rect.left) + 'px';
+                tooltip.style.top = (e.clientY - rect.top) + 'px';
+                // check if pixel belongs to a sold block
+                let found = null;
+                for(const key in store){
+                    const b = store[key];
+                    if(g.x >= b.x && g.x < b.x + b.w && g.y >= b.y && g.y < b.y + b.h){ found = b; break; }
+                }
+                if(found){
+                    tooltip.innerHTML = `<strong style="color:#fff">${found.owner}</strong> · ${found.hover || ''}`;
+                } else {
+                    tooltip.innerHTML = `<span style="color:var(--muted)">Available</span> · ${g.x},${g.y}`;
+                }
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+    });
+
+    // click to select top-left of selection
+    canvas.addEventListener('click', (e)=>{
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+        const g = canvasToGrid(cx, cy);
+        if(g.x < 0 || g.y < 0 || g.x >= GRID_W || g.y >= GRID_H) return;
+        const w = Math.max(1, parseInt(selWInput.value || 10));
+        const h = Math.max(1, parseInt(selHInput.value || 10));
+        // clamp to grid
+        const sx = Math.min(GRID_W - w, Math.max(0, g.x));
+        const sy = Math.min(GRID_H - h, Math.max(0, g.y));
+        selection = {x:sx, y:sy, w, h};
+        updateCost();
+        draw();
+    });
+
+    // zoom controls
+    function setScale(newScale, center){
+        // center: {cx,cy} canvas coords to zoom around
+        if(center){
+            const before = canvasToGrid(center.cx, center.cy);
+            scale = Math.max(0.2, Math.min(6, newScale));
+            const after = gridToCanvas(before.x, before.y);
+            // adjust offset so the grid point stays under cursor
+            offsetX += center.cx - after.cx;
+            offsetY += center.cy - after.cy;
+        } else {
+            scale = Math.max(0.2, Math.min(6, newScale));
+        }
+        draw();
+    }
+    zoomIn.addEventListener('click', ()=> setScale(scale * 1.25, {cx: canvas.width/2, cy: canvas.height/2}));
+    zoomOut.addEventListener('click', ()=> setScale(scale / 1.25, {cx: canvas.width/2, cy: canvas.height/2}));
+    canvas.addEventListener('wheel', (e)=>{
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        setScale(scale * delta, {cx, cy});
+    }, {passive:false});
+
+    // selection inputs
+    selWInput.addEventListener('input', updateCost);
+    selHInput.addEventListener('input', updateCost);
+    function updateCost(){
+        const w = Math.max(1, parseInt(selWInput.value || 10));
+        const h = Math.max(1, parseInt(selHInput.value || 10));
+        const pixels = w * h;
+        costLabel.textContent = `$${pixels * PRICE_PER_PIXEL}`;
+    }
+
+    // center button
+    centerBtn.addEventListener('click', ()=>{
+        // center on middle of grid
+        const rect = viewport.getBoundingClientRect();
+        scale = Math.min(rect.width / GRID_W, rect.height / GRID_H) * 0.9;
+        offsetX = (rect.width - GRID_W * scale) / 2;
+        offsetY = (rect.height - GRID_H * scale) / 2;
+        draw();
+    });
+
+    // clear demo
+    clearBtn.addEventListener('click', ()=>{
+        if(confirm('Clear demo data (localStorage)?')){ store = {}; saveStore(); draw(); }
+    });
+
+    // export map (simple JSON)
+    exportBtn.addEventListener('click', ()=>{
+        const data = JSON.stringify(store, null, 2);
+        const blob = new Blob([data], {type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'pixel-map.json'; a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    // purchase flow
+    buyBtn.addEventListener('click', openModal);
+    function openModal(){
+        if(!selection){ alert('Select a block on the canvas first.'); return; }
+        document.getElementById('modalCoords').textContent = `x:${selection.x} y:${selection.y} w:${selection.w} h:${selection.h}`;
+        // preview: draw selection into previewBox
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = selection.w; pCanvas.height = selection.h;
+        const pctx = pCanvas.getContext('2d');
+        // fill with pattern or existing image if any
+        pctx.fillStyle = '#2b6cff';
+        pctx.fillRect(0,0,pCanvas.width,pCanvas.height);
+        previewBox.innerHTML = '';
+        pCanvas.style.width = '100%'; pCanvas.style.height = '100%';
+        previewBox.appendChild(pCanvas);
+        modalBackdrop.style.display = 'flex';
+    }
+    document.getElementById('cancelBuy').addEventListener('click', ()=> modalBackdrop.style.display = 'none');
+
+    // handle image preview upload
+    imageFileInput.addEventListener('change', (e)=>{
+        const f = e.target.files[0];
+        if(!f) return;
+        const reader = new FileReader();
+        reader.onload = ()=> {
+            const img = new Image();
+            img.onload = ()=>{
+                // draw into preview canvas
+                const pCanvas = previewBox.querySelector('canvas') || document.createElement('canvas');
+                pCanvas.width = selection.w; pCanvas.height = selection.h;
+                const pctx = pCanvas.getContext('2d');
+                pctx.clearRect(0,0,pCanvas.width,pCanvas.height);
+                pctx.drawImage(img, 0, 0, pCanvas.width, pCanvas.height);
+                previewBox.innerHTML = '';
+                pCanvas.style.width = '100%'; pCanvas.style.height = '100%';
+                previewBox.appendChild(pCanvas);
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(f);
+    });
+
+    // confirm purchase (simulated)
+    document.getElementById('purchaseForm').addEventListener('submit', (e)=>{
+        e.preventDefault();
+        const owner = ownerNameInput.value.trim() || 'Anonymous';
+        const hover = hoverTextInput.value.trim();
+        const url = destUrlInput.value.trim();
+        // validate min pixels
+        const pixels = selection.w * selection.h;
+        if(pixels < MIN_PIXELS){ alert(`Minimum purchase is ${MIN_PIXELS} pixels.`); return; }
+        // check overlap with existing sold blocks
+        for(const key in store){
+            const b = store[key];
+            if(!(selection.x + selection.w <= b.x || b.x + b.w <= selection.x || selection.y + selection.h <= b.y || b.y + b.h <= selection.y)){
+                alert('Selection overlaps an existing sold block. Choose another area.'); return;
+            }
+        }
+        // capture preview image if present
+        const pCanvas = previewBox.querySelector('canvas');
+        const imgData = pCanvas ? pCanvas.toDataURL('image/png') : null;
+        // store
+        const key = `${selection.x}:${selection.y}:${selection.w}:${selection.h}`;
+        store[key] = {x:selection.x,y:selection.y,w:selection.w,h:selection.h,owner,hover,url,imgData,ts:Date.now(),pixels};
+        saveStore();
+        modalBackdrop.style.display = 'none';
+        // reset form
+        ownerNameInput.value = ''; hoverTextInput.value=''; destUrlInput.value=''; imageFileInput.value='';
+        selection = null;
+        draw();
+        alert('Purchase simulated — block marked as sold in demo.');
+    });
+
+    // search owner
+    document.getElementById('searchOwner').addEventListener('input', (e)=>{
+        const q = e.target.value.trim().toLowerCase();
+        if(!q){ draw(); return; }
+        // highlight first match by centering
+        for(const key in store){
+            const b = store[key];
+            if(b.owner.toLowerCase().includes(q)){
+                // center on block
+                const rect = viewport.getBoundingClientRect();
+                scale = Math.min(rect.width / GRID_W, rect.height / GRID_H) * 0.9;
+                const centerGridX = b.x + b.w/2, centerGridY = b.y + b.h/2;
+                offsetX = rect.width/2 - centerGridX * scale;
+                offsetY = rect.height/2 - centerGridY * scale;
+                draw();
+                return;
+            }
+        }
+    });
+
+    // initialize
+    function init(){
+        // initial center
+        const rect = viewport.getBoundingClientRect();
+        scale = Math.min(rect.width / GRID_W, rect.height / GRID_H) * 0.9;
+        offsetX = (rect.width - GRID_W * scale) / 2;
+        offsetY = (rect.height - GRID_H * scale) / 2;
+        updateCost();
+        updateOwnedCount();
+        resizeCanvas();
+    }
+    init();
+
+    // simple demo: prefill a few sold blocks
+    if(!Object.keys(store).length){
+        const demo = [
+            {x:120,y:80,w:40,h:20,owner:'Alpha Co',hover:'Alpha — creative',imgData:null,pixels:800},
+            {x:400,y:300,w:60,h:30,owner:'Beta Labs',hover:'Beta Labs',imgData:null,pixels:1800},
+            {x:700,y:150,w:30,h:30,owner:'Gamma',hover:'Gamma',imgData:null,pixels:900}
+        ];
+        demo.forEach(b=>{
+            const key = `${b.x}:${b.y}:${b.w}:${b.h}`;
+            store[key] = {...b,ts:Date.now()};
+        });
+        saveStore();
+        draw();
+    }
+</script>
+</body>
+</html>
